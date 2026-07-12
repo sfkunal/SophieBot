@@ -38,6 +38,7 @@ const stepDots = [...document.querySelectorAll<HTMLElement>(".step-dot")];
 let currentPhone = "";
 let currentStep: Step = 1;
 let telegramVerifyPoll: ReturnType<typeof setInterval> | null = null;
+let refreshSetupPromise: Promise<void> | null = null;
 
 initThemeToggle();
 const handledOAuthReturn = handleOAuthReturn();
@@ -291,8 +292,6 @@ async function pollTelegramVerifyOnce(): Promise<void> {
     // Keep polling until verified or user leaves the step.
   }
 }
-
-let refreshSetupPromise: Promise<void> | null = null;
 
 async function refreshSetupStatus(): Promise<void> {
   if (refreshSetupPromise) return refreshSetupPromise;
