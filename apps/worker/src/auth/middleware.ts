@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import type { Env } from "../env.js";
+import { isPhoneInAllowlist } from "./phones.js";
 import { verifySessionToken, type SessionPayload } from "./sessions.js";
 
 type AuthContext = Context<{ Bindings: Env; Variables: { session: SessionPayload } }>;
@@ -18,6 +19,10 @@ export async function requireAuth(
   const session = await verifySessionToken(token, c.env.AUTH_SECRET);
   if (!session) {
     return c.json({ error: "Invalid or expired session" }, 401);
+  }
+
+  if (!isPhoneInAllowlist(c.env, session.phone)) {
+    return c.json({ error: "Phone no longer authorized" }, 403);
   }
 
   c.set("session", session);

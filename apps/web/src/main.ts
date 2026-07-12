@@ -5,7 +5,7 @@ import {
   getSession,
   getSetupStatus,
   getTelegramLinkCode,
-  googleAuthUrl,
+  startGoogleAuth,
   setSession,
   startTelegramVerify,
   checkTelegramVerifyStatus,
@@ -38,6 +38,7 @@ const stepDots = [...document.querySelectorAll<HTMLElement>(".step-dot")];
 let currentPhone = "";
 let currentStep: Step = 1;
 let telegramVerifyPoll: ReturnType<typeof setInterval> | null = null;
+let telegramPollToken = "";
 let refreshSetupPromise: Promise<void> | null = null;
 
 initThemeToggle();
@@ -46,6 +47,7 @@ checkExistingSession(handledOAuthReturn);
 
 phoneForm.addEventListener("submit", onPhoneSubmit);
 codeForm.addEventListener("submit", onCodeSubmit);
+googleConnect.addEventListener("click", onGoogleConnectClick);
 document.getElementById("back-to-phone")!.addEventListener("click", () => {
   showStep(1);
   hideAlert();
@@ -58,6 +60,14 @@ function stopTelegramVerifyPoll(): void {
     clearInterval(telegramVerifyPoll);
     telegramVerifyPoll = null;
   }
+  telegramPollToken = "";
+}
+
+function verifyFlowErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return err.message;
+  }
+  return fallback;
 }
 
 function initThemeToggle(): void {
@@ -98,7 +108,6 @@ function checkExistingSession(skipInitialRefresh = false): void {
   dashboardLink.classList.remove("hidden");
   telegramLinkSection.classList.remove("hidden");
   currentPhone = session.phone;
-  googleConnect.href = googleAuthUrl(session.phone);
   showStep(3);
   if (!skipInitialRefresh) {
     void refreshSetupStatus();
@@ -184,15 +193,21 @@ async function onPhoneSubmit(event: SubmitEvent): Promise<void> {
     if (result.dev_code) {
       showAlert(
         result.sms_sent === false
-          ? `SMS isn't available yet (Twilio pending). Your code: ${result.dev_code}`
-          : `SMS may be blocked (A2P pending). Dev code: ${result.dev_code}`,
+          ? `SMS isn't available in local dev. Your code: ${result.dev_code}`
+          : `Dev code: ${result.dev_code}`,
         "success",
       );
       codeInput.value = result.dev_code;
+    } else if (result.sms_sent === false) {
+      showAlert(
+        result.error_hint ??
+          "SMS delivery failed — check Twilio configuration or use Telegram verify.",
+        "error",
+      );
     }
     codeInput.focus();
   } catch (err) {
-    showAlert(err instanceof ApiError ? err.message : "Could not send code.", "error");
+    showAlert(verifyFlowErrorMessage(err, "Could not send code."), "error");
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Send code";
@@ -219,11 +234,10 @@ async function onCodeSubmit(event: SubmitEvent): Promise<void> {
     currentPhone = result.phone ?? currentPhone;
     dashboardLink.classList.remove("hidden");
     telegramLinkSection.classList.remove("hidden");
-    googleConnect.href = googleAuthUrl(currentPhone);
     showStep(3);
     await refreshSetupStatus();
   } catch (err) {
-    showAlert(err instanceof ApiError ? err.message : "Invalid code.", "error");
+    showAlert(verifyFlowErrorMessage(err, "Invalid code."), "error");
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Confirm";
@@ -245,6 +259,7 @@ async function onTelegramVerifyClick(): Promise<void> {
 
   try {
     const result = await startTelegramVerify(currentPhone);
+    telegramPollToken = result.poll_token;
     const botLine = result.bot_username
       ? `<p>Open <strong>@${escapeHtml(result.bot_username)}</strong> in Telegram and send:</p>`
       : `<p>Send this to the SophieBot Telegram bot:</p>`;
@@ -263,7 +278,7 @@ async function onTelegramVerifyClick(): Promise<void> {
     void pollTelegramVerifyOnce();
   } catch (err) {
     showAlert(
-      err instanceof ApiError ? err.message : "Could not start Telegram verify.",
+      verifyFlowErrorMessage(err, "Could not start Telegram verify."),
       "error",
     );
   } finally {
@@ -273,10 +288,10 @@ async function onTelegramVerifyClick(): Promise<void> {
 }
 
 async function pollTelegramVerifyOnce(): Promise<void> {
-  if (!currentPhone) return;
+  if (!currentPhone || !telegramPollToken) return;
 
   try {
-    const status = await checkTelegramVerifyStatus(currentPhone);
+    const status = await checkTelegramVerifyStatus(currentPhone, telegramPollToken);
     if (!status.verified || !status.token) return;
 
     stopTelegramVerifyPoll();
@@ -284,12 +299,15 @@ async function pollTelegramVerifyOnce(): Promise<void> {
     currentPhone = status.phone ?? currentPhone;
     dashboardLink.classList.remove("hidden");
     telegramLinkSection.classList.remove("hidden");
-    googleConnect.href = googleAuthUrl(currentPhone);
     showAlert("Telegram verified! You're signed in.", "success");
     showStep(3);
     await refreshSetupStatus();
-  } catch {
-    // Keep polling until verified or user leaves the step.
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 401 || err.status === 429)) {
+      stopTelegramVerifyPoll();
+      showAlert(err.message, "error");
+    }
+    // Keep polling for transient errors until verified or user leaves the step.
   }
 }
 
@@ -379,6 +397,23 @@ async function onTelegramLinkClick(): Promise<void> {
   } finally {
     telegramLinkBtn.disabled = false;
     telegramLinkBtn.textContent = "Get link code";
+  }
+}
+
+async function onGoogleConnectClick(event: MouseEvent): Promise<void> {
+  event.preventDefault();
+  hideAlert();
+  googleConnect.classList.add("loading");
+
+  try {
+    await startGoogleAuth();
+  } catch (err) {
+    showAlert(
+      err instanceof ApiError ? err.message : "Could not start Google sign-in.",
+      "error",
+    );
+  } finally {
+    googleConnect.classList.remove("loading");
   }
 }
 

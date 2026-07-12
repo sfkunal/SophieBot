@@ -26,19 +26,27 @@ export async function handleVote(
     const queued = await listRestaurants(ctx.env.DB, "queued");
     const match = bestTitleMatch(title, queued);
     if (match) {
-      await incrementRestaurantPriority(ctx.env.DB, match.id, 1);
+      let priorityIncreased = false;
       if (ctx.userId) {
-        await recordVote(
+        const isNew = await recordVote(
           ctx.env.DB,
           "restaurant",
           match.id,
           ctx.userId,
           1,
         );
+        if (isNew) {
+          await incrementRestaurantPriority(ctx.env.DB, match.id, 1);
+          priorityIncreased = true;
+        }
+      } else {
+        await incrementRestaurantPriority(ctx.env.DB, match.id, 1);
+        priorityIncreased = true;
       }
       return {
         data: {
           vote_recorded: { title: match.title, item_type: "restaurant" },
+          already_voted: !priorityIncreased,
         },
       };
     }
@@ -48,13 +56,27 @@ export async function handleVote(
     const queued = await listWatchItems(ctx.env.DB, "queued");
     const match = bestTitleMatch(title, queued);
     if (match) {
-      await incrementWatchPriority(ctx.env.DB, match.id, 1);
+      let priorityIncreased = false;
       if (ctx.userId) {
-        await recordVote(ctx.env.DB, "watch", match.id, ctx.userId, 1);
+        const isNew = await recordVote(
+          ctx.env.DB,
+          "watch",
+          match.id,
+          ctx.userId,
+          1,
+        );
+        if (isNew) {
+          await incrementWatchPriority(ctx.env.DB, match.id, 1);
+          priorityIncreased = true;
+        }
+      } else {
+        await incrementWatchPriority(ctx.env.DB, match.id, 1);
+        priorityIncreased = true;
       }
       return {
         data: {
           vote_recorded: { title: match.title, item_type: "watch" },
+          already_voted: !priorityIncreased,
         },
       };
     }

@@ -117,14 +117,18 @@ SophieBot texts like a warm, funny mutual friend:
 ## Automation
 
 - **Weekly digest cron** (Friday 6pm UTC): Nudges about restaurants and watch items queued 30+ days with no action.
-- **Phone verification:** 6-digit SMS codes or Telegram `/verify` for dashboard setup; only `ALLOWED_PHONES` may register.
+- **Phone verification:** 6-digit SMS codes or Telegram `/verify` for dashboard setup; only `ALLOWED_PHONES` may register. Telegram status polling requires the `poll_token` returned by `POST /api/onboard/telegram-verify`.
 
 ## Security & Privacy
 
-- Allowlist enforced on SMS, Telegram, and API.
-- `AUTH_SECRET` signs dashboard sessions.
+- `ALLOWED_PHONES` is strictly enforced on SMS, Telegram, onboarding, and authenticated API routes. Removing a number from the allowlist revokes access even for previously registered users.
+- `TELEGRAM_WEBHOOK_SECRET` is required when Telegram is enabled; the webhook returns 503 without it and rejects requests with a mismatched `X-Telegram-Bot-Api-Secret-Token`.
+- Google Calendar OAuth start (`/api/auth/google/start`) requires an authenticated session (Bearer token); user identity comes from the session, not a query param.
+- Onboard verify/confirm endpoints are rate limited per phone and IP (429 on excess).
+- `AUTH_SECRET` signs dashboard sessions and OAuth state.
 - Google refresh tokens stored in D1 (operator responsibility for secret rotation).
 - OpenAI receives message text and structured context only — no full calendar dump unless needed for the request.
+- Schema migration `0005_security.sql` adds telegram verify poll tokens, rate-limit buckets, and vote dedup — apply via `npm run db:migrate`.
 
 ## Success Metrics (informal)
 

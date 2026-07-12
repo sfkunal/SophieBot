@@ -5,10 +5,13 @@ import {
   markDoneRequestSchema,
   phoneVerifyConfirmSchema,
   phoneVerifyRequestSchema,
+  telegramVerifyStatusSchema,
 } from "@brain/shared";
 import type { Env } from "./env.js";
 import { isTelegramConfigured } from "./env.js";
 import { requireAuth } from "./auth/middleware.js";
+import { consumeRateLimit } from "./auth/rate-limit.js";
+import { createOAuthState, verifyOAuthState } from "./auth/oauth-state.js";
 import {
   generateVerificationCode,
   isPhoneInAllowlist,
@@ -21,6 +24,7 @@ import {
 } from "./auth/sessions.js";
 import {
   createUser,
+  getUserById,
   getUserByPhone,
   listUsers,
   storeVerificationCode,
@@ -28,6 +32,7 @@ import {
   storeTelegramVerifyCode,
   updateGoogleRefreshToken,
   verifyCode,
+  verifyTelegramPollToken,
 } from "./db/users.js";
 import { listRestaurants, markRestaurantDone, dropRestaurant } from "./db/restaurants.js";
 import { listWatchItems, markWatchDone, dropWatchItem } from "./db/watch.js";
@@ -44,6 +49,7 @@ import { getTelegramBotUsername } from "./messaging/telegram.js";
 import { sendSms } from "./sms/twilio.js";
 import { handleWeeklyDigest } from "./cron/weekly-digest.js";
 import { buildWebReturnUrl } from "./utils/web-url.js";
+import { getClientIp } from "./utils/request.js";
 
 type Variables = {
   session: SessionPayload;
@@ -66,8 +72,14 @@ app.use(
       } catch {
         // ignore invalid WEB_URL
       }
-      if (!origin) return LOCAL_WEB_ORIGINS[0];
-      return allowed.has(origin) ? origin : LOCAL_WEB_ORIGINS[0];
+      if (!origin) {
+        try {
+          return new URL(c.env.WEB_URL).origin;
+        } catch {
+          return null;
+        }
+      }
+      return allowed.has(origin) ? origin : null;
     },
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "OPTIONS"],
@@ -103,22 +115,20 @@ app.post("/webhooks/telegram", async (c) => {
   if (!isTelegramConfigured(c.env)) {
     return c.json({ error: "Telegram not configured" }, 503);
   }
+  if (!c.env.TELEGRAM_WEBHOOK_SECRET?.trim()) {
+    return c.json({ error: "TELEGRAM_WEBHOOK_SECRET required" }, 503);
+  }
   return handleTelegramWebhook(c.req.raw, c.env);
 });
 
-app.get("/api/auth/google/start", async (c) => {
-  const phone = c.req.query("phone");
-  if (!phone) {
-    return c.json({ error: "phone query param required" }, 400);
-  }
-
-  const normalized = normalizePhone(phone);
-  const user = await getUserByPhone(c.env.DB, normalized);
+app.get("/api/auth/google/start", requireAuth, async (c) => {
+  const session = c.get("session");
+  const user = await getUserById(c.env.DB, session.userId);
   if (!user) {
     return c.json({ error: "user not found — onboard first" }, 404);
   }
 
-  const state = btoa(JSON.stringify({ userId: user.id, ts: Date.now() }));
+  const state = await createOAuthState(user.id, c.env.AUTH_SECRET);
   return c.redirect(getOAuthUrl(c.env, state));
 });
 
@@ -135,16 +145,11 @@ app.get("/api/auth/google/callback", async (c) => {
     return c.json({ error: "missing code or state" }, 400);
   }
 
-  let userId: string;
-  try {
-    const state = JSON.parse(atob(stateRaw)) as { userId: string; ts: number };
-    if (Date.now() - state.ts > 10 * 60_000) {
-      return c.json({ error: "state expired" }, 400);
-    }
-    userId = state.userId;
-  } catch {
-    return c.json({ error: "invalid state" }, 400);
+  const state = await verifyOAuthState(stateRaw, c.env.AUTH_SECRET);
+  if (!state) {
+    return c.json({ error: "invalid or expired state" }, 400);
   }
+  const userId = state.userId;
 
   try {
     const tokens = await exchangeCodeForTokens(c.env, code);
@@ -165,6 +170,24 @@ app.post("/api/onboard/verify", async (c) => {
   }
 
   const phone = normalizePhone(parsed.data.phone);
+  const clientIp = getClientIp(c.req.raw);
+
+  const phoneAllowed = await consumeRateLimit(
+    c.env.DB,
+    `verify:phone:${phone}`,
+    5,
+    15,
+  );
+  const ipAllowed = await consumeRateLimit(
+    c.env.DB,
+    `verify:ip:${clientIp}`,
+    20,
+    15,
+  );
+
+  if (!phoneAllowed || !ipAllowed) {
+    return c.json({ error: "Too many verification attempts — try again later." }, 429);
+  }
 
   if (!isPhoneInAllowlist(c.env, phone)) {
     return c.json(
@@ -190,8 +213,7 @@ app.post("/api/onboard/verify", async (c) => {
     smsSent = false;
   }
 
-  const showCodeInResponse = isLocalDev || !smsSent;
-  if (showCodeInResponse) {
+  if (isLocalDev) {
     console.log(`[verify] Verification code for ${phone}: ${code}`);
   }
 
@@ -199,7 +221,10 @@ app.post("/api/onboard/verify", async (c) => {
     ok: true,
     phone,
     sms_sent: smsSent,
-    ...(showCodeInResponse ? { dev_code: code } : {}),
+    ...(isLocalDev ? { dev_code: code } : {}),
+    ...(!isLocalDev && !smsSent
+      ? { error_hint: "SMS delivery failed — check Twilio configuration." }
+      : {}),
   });
 });
 
@@ -210,6 +235,25 @@ app.post("/api/onboard/confirm", async (c) => {
   }
 
   const phone = normalizePhone(parsed.data.phone);
+  const clientIp = getClientIp(c.req.raw);
+
+  const confirmAllowed = await consumeRateLimit(
+    c.env.DB,
+    `confirm:phone:${phone}`,
+    10,
+    15,
+  );
+  const ipAllowed = await consumeRateLimit(
+    c.env.DB,
+    `confirm:ip:${clientIp}`,
+    30,
+    15,
+  );
+
+  if (!confirmAllowed || !ipAllowed) {
+    return c.json({ error: "Too many attempts — try again later." }, 429);
+  }
+
   const valid = await verifyCode(c.env, phone, parsed.data.code);
 
   if (!valid) {
@@ -254,13 +298,32 @@ app.post("/api/onboard/telegram-verify", async (c) => {
     );
   }
 
-  const code = await storeTelegramVerifyCode(c.env, phone);
+  const clientIp = getClientIp(c.req.raw);
+  const phoneAllowed = await consumeRateLimit(
+    c.env.DB,
+    `tg-verify:phone:${phone}`,
+    5,
+    15,
+  );
+  const ipAllowed = await consumeRateLimit(
+    c.env.DB,
+    `tg-verify:ip:${clientIp}`,
+    20,
+    15,
+  );
+
+  if (!phoneAllowed || !ipAllowed) {
+    return c.json({ error: "Too many attempts — try again later." }, 429);
+  }
+
+  const { code, pollToken } = await storeTelegramVerifyCode(c.env, phone);
   const botUsername = await getTelegramBotUsername(c.env);
 
   return c.json({
     ok: true,
     phone,
     code,
+    poll_token: pollToken,
     expires_in_minutes: 15,
     bot_username: botUsername,
     instructions: botUsername
@@ -270,12 +333,22 @@ app.post("/api/onboard/telegram-verify", async (c) => {
 });
 
 app.post("/api/onboard/telegram-verify/status", async (c) => {
-  const parsed = phoneVerifyRequestSchema.safeParse(await c.req.json());
+  const parsed = telegramVerifyStatusSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
 
   const phone = normalizePhone(parsed.data.phone);
+  const pollValid = await verifyTelegramPollToken(
+    c.env,
+    phone,
+    parsed.data.poll_token,
+  );
+
+  if (!pollValid) {
+    return c.json({ error: "Invalid or expired poll token" }, 401);
+  }
+
   const user = await getUserByPhone(c.env.DB, phone);
 
   if (!user?.telegram_chat_id || !isPhoneInAllowlist(c.env, phone)) {
@@ -413,6 +486,20 @@ app.get("/api/calendar/slots", requireAuth, async (c) => {
     end,
     forceRefresh,
   );
+
+  if (allBusy.length < 2) {
+    return c.json({
+      window: { start, end },
+      free_slots: [],
+      slots: [],
+      events: [],
+      week_start: start,
+      week_end: end,
+      users_linked: allBusy.length,
+      message: "Both calendars must be connected to show mutual free time.",
+    });
+  }
+
   const perUserBlocks = allBusy.map((x) => x.blocks);
   const slots = findFreeSlots(start, end, perUserBlocks, minDuration);
 

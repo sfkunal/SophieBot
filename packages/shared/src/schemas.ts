@@ -66,6 +66,11 @@ export const phoneVerifyConfirmSchema = z.object({
   code: z.string().length(6),
 });
 
+export const telegramVerifyStatusSchema = z.object({
+  phone: z.string().min(10),
+  poll_token: z.string().min(16),
+});
+
 export const markDoneRequestSchema = z.object({
   item_type: z.enum(["restaurant", "watch"]),
   id: z.string(),

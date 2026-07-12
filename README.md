@@ -1,5 +1,6 @@
 # SophieBot
 
+[![CI](https://github.com/sfkunal/SophieBot/actions/workflows/ci.yml/badge.svg)](https://github.com/sfkunal/SophieBot/actions/workflows/ci.yml)
 [![Deploy Worker](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-worker.yml/badge.svg)](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-worker.yml)
 [![Deploy Web](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-web.yml)
 
@@ -17,7 +18,7 @@
 | **Telegram** | Same commands, plus phone verification when SMS isn't ready |
 | **Web** (GitHub Pages) | Onboarding, Google Calendar connect, dashboard |
 
-Only **allowlisted phone numbers** can sign up or use the bot. Random Telegram users get a static rejection — no OpenAI calls.
+Only **allowlisted phone numbers** (`ALLOWED_PHONES`) can sign up, use SMS, or access the API. Removing a number from the allowlist revokes access even if the user was previously registered. Random Telegram users get a static rejection — no OpenAI calls.
 
 ## Architecture
 
@@ -77,7 +78,7 @@ SophieBot/
 │   └── shared/          # Types, Zod schemas, LLM prompts
 ├── docs/
 │   └── product.md       # Product specification
-├── .github/workflows/   # CI deploy pipelines
+├── .github/workflows/   # CI (test) + deploy pipelines
 ├── .env.example         # Local / wrangler secret reference
 └── package.json         # npm workspaces root
 ```
@@ -120,6 +121,8 @@ npm run db:migrate -w @brain/worker          # local
 npm run db:migrate:remote -w @brain/worker   # production
 ```
 
+Includes `0005_security.sql` (telegram verify poll tokens, rate-limit buckets, vote dedup index). Re-run after pulling security changes.
+
 ### 3. Twilio (optional)
 
 1. Buy or use an existing SMS number.
@@ -129,13 +132,14 @@ npm run db:migrate:remote -w @brain/worker   # production
 ### 4. Telegram (optional)
 
 1. Create a bot via [@BotFather](https://t.me/BotFather).
-2. Set the webhook:
+2. Generate a webhook secret (`openssl rand -hex 32`) and set `TELEGRAM_WEBHOOK_SECRET`. The webhook **fails closed** (503) without it.
+3. Set the webhook with `secret_token` matching that value:
 
    ```bash
-   curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-worker>.workers.dev/webhooks/telegram"
+   curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-worker>.workers.dev/webhooks/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>"
    ```
 
-3. Store `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` via `wrangler secret put`.
+4. Store `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `TELEGRAM_BOT_USERNAME` via `wrangler secret put`.
 
 ### 5. OpenAI
 
@@ -147,16 +151,19 @@ Create an API key and set `OPENAI_API_KEY`. The worker uses `gpt-4o-mini` for in
 2. Authorized redirect URI: `https://<your-worker>.workers.dev/api/auth/google/callback`
 3. Enable the Google Calendar API.
 4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`.
+5. Calendar connect from the dashboard calls `GET /api/auth/google/start` with a **Bearer session token** (no `phone` query param).
 
 ### 7. Allowlist and auth
 
 ```bash
-# Comma-separated E.164 numbers for the two of you
+# Comma-separated E.164 numbers for the two of you (strictly enforced — delisting revokes access)
 ALLOWED_PHONES=+15551234567,+15559876543
 
 # Random 32+ char secret for dashboard sessions
 AUTH_SECRET=<openssl rand -hex 32>
 ```
+
+Onboard verify/confirm endpoints are rate limited (429 on excess). Telegram verification polling requires the `poll_token` returned from `POST /api/onboard/telegram-verify`.
 
 ### 8. Worker secrets (production)
 
@@ -170,8 +177,9 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put ALLOWED_PHONES
 npx wrangler secret put AUTH_SECRET
-# Optional:
+# Required when Telegram is enabled:
 npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 npx wrangler secret put TELEGRAM_BOT_USERNAME
 ```
 
@@ -195,6 +203,14 @@ npm run build
 ```
 
 Use `apps/worker/.dev.vars` for local secrets (same keys as `.env.example`). After pulling schema changes, run `npm run db:migrate -w @brain/worker`.
+
+## Testing
+
+```bash
+npm test
+```
+
+Runs worker unit tests (Vitest). CI (`.github/workflows/ci.yml`) runs `npm test` on every push and pull request.
 
 ## Deployment
 

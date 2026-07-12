@@ -24,18 +24,34 @@ export function titleMatchScore(query: string, candidate: string): number {
   return Math.round((overlap / qWords.length) * 60);
 }
 
+const MIN_MATCH_SCORE = 50;
+const AMBIGUITY_GAP = 10;
+
 export function bestTitleMatch<T extends { title: string }>(
   query: string,
   items: T[],
 ): T | null {
   let best: T | null = null;
   let bestScore = 0;
+  let secondBestScore = 0;
+
   for (const item of items) {
     const score = titleMatchScore(query, item.title);
     if (score > bestScore) {
+      secondBestScore = bestScore;
       bestScore = score;
       best = item;
+    } else if (score > secondBestScore) {
+      secondBestScore = score;
     }
   }
-  return bestScore >= 40 ? best : null;
+
+  if (bestScore < MIN_MATCH_SCORE) return null;
+  if (
+    secondBestScore >= MIN_MATCH_SCORE &&
+    bestScore - secondBestScore < AMBIGUITY_GAP
+  ) {
+    return null;
+  }
+  return best;
 }

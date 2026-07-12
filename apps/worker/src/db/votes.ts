@@ -6,7 +6,16 @@ export async function recordVote(
   itemId: string,
   userId: string,
   value = 1,
-): Promise<void> {
+): Promise<boolean> {
+  const existing = await db
+    .prepare(
+      "SELECT id FROM votes WHERE item_type = ? AND item_id = ? AND user_id = ?",
+    )
+    .bind(itemType, itemId, userId)
+    .first<{ id: string }>();
+
+  if (existing) return false;
+
   await db
     .prepare(
       `INSERT INTO votes (id, item_type, item_id, user_id, value, created_at)
@@ -14,4 +23,6 @@ export async function recordVote(
     )
     .bind(newId(), itemType, itemId, userId, value, nowIso())
     .run();
+
+  return true;
 }

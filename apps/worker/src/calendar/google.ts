@@ -107,37 +107,49 @@ async function fetchEventsFromGoogle(
   timeMin: string,
   timeMax: string,
 ): Promise<Array<{ start: string; end: string; summary: string }>> {
-  const params = new URLSearchParams({
-    timeMin,
-    timeMax,
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "50",
-  });
+  const events: Array<{ start: string; end: string; summary: string }> = [];
+  let pageToken: string | undefined;
+  const maxEvents = 250;
 
-  const res = await fetch(`${EVENTS_URL}?${params}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  while (events.length < maxEvents) {
+    const params = new URLSearchParams({
+      timeMin,
+      timeMax,
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "50",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
 
-  if (!res.ok) {
-    throw new Error(`Google events list failed: ${await res.text()}`);
-  }
+    const res = await fetch(`${EVENTS_URL}?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
 
-  const data = (await res.json()) as GoogleEventsResponse;
-  return (data.items ?? [])
-    .map((event) => {
+    if (!res.ok) {
+      throw new Error(`Google events list failed: ${await res.text()}`);
+    }
+
+    const data = (await res.json()) as GoogleEventsResponse & {
+      nextPageToken?: string;
+    };
+
+    for (const event of data.items ?? []) {
       const start = eventDateTime(event.start);
       const end = eventDateTime(event.end);
-      if (!start || !end) return null;
-      return {
+      if (!start || !end) continue;
+      events.push({
         start,
         end,
         summary: event.summary?.trim() || "Busy",
-      };
-    })
-    .filter((block): block is { start: string; end: string; summary: string } =>
-      block !== null,
-    );
+      });
+      if (events.length >= maxEvents) break;
+    }
+
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  return events;
 }
 
 export async function fetchBusyBlocksForUser(

@@ -45,6 +45,8 @@ Production:
 npm run db:migrate:remote
 ```
 
+Migrations include `0005_security.sql` (telegram verify poll tokens, rate-limit buckets, vote dedup index).
+
 ### 4. Configure secrets
 
 Set these via Wrangler (never commit real values):
@@ -58,8 +60,9 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put ALLOWED_PHONES
 npx wrangler secret put AUTH_SECRET
-# Optional:
+# Required when Telegram is enabled:
 npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 npx wrangler secret put TELEGRAM_BOT_USERNAME
 ```
 
@@ -81,9 +84,13 @@ POST https://<your-worker>/webhooks/twilio
 
 ### 6. Telegram webhook
 
+Generate a webhook secret and set `TELEGRAM_WEBHOOK_SECRET`. The endpoint returns **503** without it.
+
 ```bash
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-worker>/webhooks/telegram"
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-worker>/webhooks/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>"
 ```
+
+Telegram sends the secret in the `X-Telegram-Bot-Api-Secret-Token` header; mismatches return 403.
 
 ### 7. Google OAuth
 
@@ -92,6 +99,8 @@ In Google Cloud Console, add authorized redirect URI:
 ```
 https://<your-worker>/api/auth/google/callback
 ```
+
+`GET /api/auth/google/start` requires an authenticated session (`Authorization: Bearer <token>`). The user is taken from the session — no `phone` query param.
 
 ## Development
 
@@ -102,6 +111,14 @@ npm run dev:worker
 ```
 
 Health check: `GET http://localhost:8787/health`
+
+## Testing
+
+```bash
+npm test
+```
+
+From repo root: `npm test` (runs worker Vitest suite). CI runs this on every push and PR via `.github/workflows/ci.yml`.
 
 ## Deploy
 
@@ -116,13 +133,13 @@ CI deploys via `.github/workflows/deploy-worker.yml` on push to `main`.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/webhooks/twilio` | Inbound SMS pipeline |
-| POST | `/webhooks/telegram` | Inbound Telegram pipeline |
-| GET | `/api/auth/google/start?phone=+1...` | Start Google OAuth |
+| POST | `/webhooks/telegram` | Inbound Telegram pipeline (requires `TELEGRAM_WEBHOOK_SECRET`) |
+| GET | `/api/auth/google/start` | Start Google OAuth (auth required) |
 | GET | `/api/auth/google/callback` | OAuth callback |
-| POST | `/api/onboard/verify` | Send phone verification SMS |
-| POST | `/api/onboard/confirm` | Confirm SMS code + register user |
-| POST | `/api/onboard/telegram-verify` | Start Telegram phone verification |
-| POST | `/api/onboard/telegram-verify/status` | Poll Telegram verify completion |
+| POST | `/api/onboard/verify` | Send phone verification SMS (rate limited) |
+| POST | `/api/onboard/confirm` | Confirm SMS code + register user (rate limited) |
+| POST | `/api/onboard/telegram-verify` | Start Telegram phone verification; returns `poll_token` |
+| POST | `/api/onboard/telegram-verify/status` | Poll Telegram verify completion (`phone` + `poll_token`) |
 | POST | `/api/telegram/link-code` | Generate Telegram link code (auth required) |
 | GET | `/api/restaurants` | List restaurants (`?status=queued`) |
 | GET | `/api/watch` | List watch items |
@@ -131,8 +148,8 @@ CI deploys via `.github/workflows/deploy-worker.yml` on push to `main`.
 
 ## Message pipeline
 
-1. Verify webhook signature (Twilio) or secret token (Telegram)
-2. Check allowlist — SMS: phone authorized; Telegram: linked + allowlisted
+1. Verify webhook signature (Twilio) or secret token (Telegram `X-Telegram-Bot-Api-Secret-Token`)
+2. Check allowlist — SMS and API strictly use `ALLOWED_PHONES` (registered-but-delisted users lose access)
 3. Load DB context (queue counts, recent items, conversation history)
 4. OpenAI intent extraction (`gpt-4o-mini`)
 5. Deterministic handler by intent
@@ -143,6 +160,18 @@ CI deploys via `.github/workflows/deploy-worker.yml` on push to `main`.
 
 Friday 6pm UTC (`0 18 * * 5`) — weekly digest nudging stale queued items (30+ days).
 
+## Rate limits
+
+Onboard endpoints are rate limited per phone and client IP (15-minute windows):
+
+| Endpoint | Per phone | Per IP |
+|----------|-----------|--------|
+| `POST /api/onboard/verify` | 5 | 20 |
+| `POST /api/onboard/confirm` | 10 | 30 |
+| `POST /api/onboard/telegram-verify` | 5 | 20 |
+
+Exceeded limits return 429.
+
 ## Environment variables
 
 | Variable | Required | Description |
@@ -151,12 +180,13 @@ Friday 6pm UTC (`0 18 * * 5`) — weekly digest nudging stale queued items (30+ 
 | `TWILIO_AUTH_TOKEN` | if SMS | Twilio auth token |
 | `TWILIO_PHONE_NUMBER` | if SMS | Outbound SMS from number (E.164) |
 | `TELEGRAM_BOT_TOKEN` | if Telegram | Telegram bot token |
+| `TELEGRAM_WEBHOOK_SECRET` | if Telegram | Webhook secret token (required; endpoint fails closed without it) |
 | `TELEGRAM_BOT_USERNAME` | if Telegram | Bot username (without @) |
 | `OPENAI_API_KEY` | yes | OpenAI API key |
 | `GOOGLE_CLIENT_ID` | yes | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | yes | Google OAuth client secret |
 | `GOOGLE_REDIRECT_URI` | yes | OAuth callback URL |
-| `ALLOWED_PHONES` | yes | Comma-separated E.164 allowlist |
+| `ALLOWED_PHONES` | yes | Comma-separated E.164 allowlist; strictly enforced for SMS, onboarding, and API |
 | `AUTH_SECRET` | yes | Session/signing secret for web dashboard |
 | `APP_URL` | yes | Public worker URL |
 | `WEB_URL` | yes | Dashboard URL for OAuth redirects |

@@ -128,6 +128,14 @@ function generateTelegramLinkCode(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+function generatePollToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 export async function storeTelegramLinkCode(
   env: Env,
   userId: string,
@@ -194,19 +202,47 @@ export async function storeTelegramVerifyCode(
   env: Env,
   phone: string,
   ttlMinutes = 15,
-): Promise<string> {
+): Promise<{ code: string; pollToken: string }> {
   const code = generateTelegramLinkCode();
+  const pollToken = generatePollToken();
   const expires = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
   await env.DB.prepare(
-    `INSERT INTO telegram_verify_codes (phone_e164, code, expires_at, created_at)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(phone_e164) DO UPDATE SET code = ?, expires_at = ?, created_at = ?`,
+    `INSERT INTO telegram_verify_codes (phone_e164, code, poll_token, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(phone_e164) DO UPDATE SET
+       code = ?, poll_token = ?, expires_at = ?, created_at = ?`,
   )
-    .bind(phone, code, expires, nowIso(), code, expires, nowIso())
+    .bind(
+      phone,
+      code,
+      pollToken,
+      expires,
+      nowIso(),
+      code,
+      pollToken,
+      expires,
+      nowIso(),
+    )
     .run();
 
-  return code;
+  return { code, pollToken };
+}
+
+export async function verifyTelegramPollToken(
+  env: Env,
+  phone: string,
+  pollToken: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT poll_token, expires_at FROM telegram_verify_codes WHERE phone_e164 = ?",
+  )
+    .bind(phone)
+    .first<{ poll_token: string | null; expires_at: string }>();
+
+  if (!row?.poll_token || row.poll_token !== pollToken) return false;
+  if (new Date(row.expires_at) < new Date()) return false;
+  return true;
 }
 
 export async function claimTelegramVerifyCode(

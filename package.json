@@ -14,6 +14,7 @@
     "dev:worker": "npm run dev -w @brain/worker",
     "dev:web": "npm run dev -w @brain/web",
     "build": "npm run build -w @brain/shared && npm run build -w @brain/worker && npm run build -w @brain/web",
+    "test": "npm run test -w @brain/worker",
     "build:shared": "npm run build -w @brain/shared",
     "build:web": "npm run build -w @brain/web",
     "deploy:worker": "npm run deploy -w @brain/worker",

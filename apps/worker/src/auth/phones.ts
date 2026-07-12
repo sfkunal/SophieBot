@@ -18,15 +18,7 @@ export async function isPhoneAuthorized(
   env: Env,
   phone: string,
 ): Promise<boolean> {
-  if (isPhoneInAllowlist(env, phone)) return true;
-
-  const user = await env.DB.prepare(
-    "SELECT id FROM users WHERE phone_e164 = ?",
-  )
-    .bind(phone)
-    .first<{ id: string }>();
-
-  return !!user;
+  return isPhoneInAllowlist(env, phone);
 }
 
 export function generateVerificationCode(): string {

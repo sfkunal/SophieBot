@@ -37,7 +37,7 @@ export function verifyTelegramWebhook(
   request: Request,
   secret: string | undefined,
 ): boolean {
-  if (!secret?.trim()) return true;
+  if (!secret?.trim()) return false;
   const header = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
   return header === secret;
 }

@@ -43,6 +43,7 @@ export interface TelegramVerifyStartResponse {
   ok: boolean;
   phone: string;
   code: string;
+  poll_token: string;
   expires_in_minutes: number;
   bot_username: string | null;
   instructions: string;
@@ -159,9 +160,15 @@ function normalizePhone(input: string): string {
   return `+${digits}`;
 }
 
-export async function verifyPhone(
-  phone: string,
-): Promise<{ ok: boolean; dev_code?: string; sms_sent?: boolean }> {
+export interface VerifyPhoneResponse {
+  ok: boolean;
+  phone?: string;
+  dev_code?: string;
+  sms_sent?: boolean;
+  error_hint?: string;
+}
+
+export async function verifyPhone(phone: string): Promise<VerifyPhoneResponse> {
   return request("/api/onboard/verify", {
     method: "POST",
     body: JSON.stringify({ phone: normalizePhone(phone) }),
@@ -192,10 +199,14 @@ export async function startTelegramVerify(
 
 export async function checkTelegramVerifyStatus(
   phone: string,
+  pollToken: string,
 ): Promise<TelegramVerifyStatusResponse> {
   return request("/api/onboard/telegram-verify/status", {
     method: "POST",
-    body: JSON.stringify({ phone: normalizePhone(phone) }),
+    body: JSON.stringify({
+      phone: normalizePhone(phone),
+      poll_token: pollToken,
+    }),
   }, false);
 }
 
@@ -207,9 +218,31 @@ export async function getTelegramLinkCode(): Promise<TelegramLinkCodeResponse> {
   return request("/api/telegram/link-code", { method: "POST" });
 }
 
-export function googleAuthUrl(phone: string): string {
-  const params = new URLSearchParams({ phone: normalizePhone(phone) });
-  return `${getApiBaseUrl()}/api/auth/google/start?${params}`;
+export async function startGoogleAuth(): Promise<void> {
+  const session = getSession();
+  if (!session?.token) {
+    throw new ApiError("Sign in first", 401);
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/google/start`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${session.token}` },
+    redirect: "manual",
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new ApiError("Session expired — sign in again.", response.status);
+  }
+
+  const location = response.headers.get("Location");
+  if (response.status >= 300 && response.status < 400 && location) {
+    window.location.href = location;
+    return;
+  }
+
+  if (!response.ok) {
+    throw new ApiError("Could not start Google sign-in.", response.status);
+  }
 }
 
 export async function getRestaurants(): Promise<Restaurant[]> {
