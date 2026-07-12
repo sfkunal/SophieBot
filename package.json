@@ -1,0 +1,23 @@
+{
+  "name": "brain-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared SMS brain for a couple — restaurants, watchlist, and Google Calendar",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:worker": "npm run dev -w @brain/worker",
+    "dev:web": "npm run dev -w @brain/web",
+    "build": "npm run build -w @brain/shared && npm run build -w @brain/worker && npm run build -w @brain/web",
+    "build:shared": "npm run build -w @brain/shared",
+    "build:web": "npm run build -w @brain/web",
+    "deploy:worker": "npm run deploy -w @brain/worker",
+    "db:migrate": "npm run db:migrate -w @brain/worker",
+    "db:migrate:remote": "npm run db:migrate:remote -w @brain/worker"
+  }
+}

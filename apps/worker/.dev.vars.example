@@ -1,0 +1,12 @@
+# Copy to .dev.vars for local wrangler dev
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+# Telegram (optional — set via `wrangler secret put`)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_BOT_USERNAME=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+ALLOWED_PHONES=+15551234567,+15559876543
+AUTH_SECRET=dev-secret-change-me

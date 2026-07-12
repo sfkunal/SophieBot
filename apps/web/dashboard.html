@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SophieBot dashboard — restaurants, watchlist, and calendar." />
+    <title>SophieBot — Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+    <script src="./config.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="site-header">
+        <a class="logo" href="./">
+          <span class="logo-mark" aria-hidden="true">🧠</span>
+          <span class="logo-text">SophieBot</span>
+        </a>
+        <div class="header-actions">
+          <button
+            type="button"
+            class="icon-btn"
+            id="theme-toggle"
+            aria-label="Toggle dark mode"
+            title="Toggle theme"
+          >
+            🌙
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="logout-btn">
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <div id="alert" class="alert hidden" role="alert"></div>
+
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat">
+          <div class="stat-value" id="stat-restaurants">—</div>
+          <div class="stat-label">Restaurants</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-restaurants-done">—</div>
+          <div class="stat-label">Visited</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-watch">—</div>
+          <div class="stat-label">Watchlist</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-watching">—</div>
+          <div class="stat-label">Watching</div>
+        </div>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+        <button
+          type="button"
+          class="tab active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-restaurants"
+          id="tab-restaurants"
+          data-tab="restaurants"
+        >
+          🍽 Restaurants
+        </button>
+        <button
+          type="button"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-watch"
+          id="tab-watch"
+          data-tab="watch"
+        >
+          🎬 Watchlist
+        </button>
+        <button
+          type="button"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-calendar"
+          id="tab-calendar"
+          data-tab="calendar"
+        >
+          📅 Calendar
+        </button>
+      </nav>
+
+      <section
+        class="tab-panel active"
+        role="tabpanel"
+        id="panel-restaurants"
+        aria-labelledby="tab-restaurants"
+      >
+        <div id="restaurants-list" class="item-list">
+          <p class="loading"><span class="spinner"></span>Loading restaurants…</p>
+        </div>
+      </section>
+
+      <section
+        class="tab-panel"
+        role="tabpanel"
+        id="panel-watch"
+        aria-labelledby="tab-watch"
+        hidden
+      >
+        <div id="watch-list" class="item-list">
+          <p class="loading"><span class="spinner"></span>Loading watchlist…</p>
+        </div>
+      </section>
+
+      <section
+        class="tab-panel"
+        role="tabpanel"
+        id="panel-calendar"
+        aria-labelledby="tab-calendar"
+        hidden
+      >
+        <div class="calendar-panel-header">
+          <button type="button" class="btn btn-secondary btn-sm" id="refresh-calendar">
+            Refresh calendar
+          </button>
+        </div>
+        <div id="calendar-slots" class="slot-list">
+          <p class="loading"><span class="spinner"></span>Open this tab to load free slots…</p>
+        </div>
+      </section>
+
+      <p class="footer-note">
+        Text SophieBot on SMS or Telegram to add items or ask what's free.
+        <a href="./">Setup &amp; settings</a>
+      </p>
+    </div>
+
+    <script type="module" src="./src/dashboard.ts"></script>
+  </body>
+</html>

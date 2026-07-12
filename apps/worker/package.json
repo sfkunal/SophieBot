@@ -1,0 +1,22 @@
+{
+  "name": "@brain/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc --noEmit",
+    "db:migrate": "wrangler d1 migrations apply brain-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply brain-db --remote"
+  },
+  "dependencies": {
+    "@brain/shared": "*",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}
