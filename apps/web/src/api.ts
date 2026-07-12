@@ -219,30 +219,11 @@ export async function getTelegramLinkCode(): Promise<TelegramLinkCodeResponse> {
 }
 
 export async function startGoogleAuth(): Promise<void> {
-  const session = getSession();
-  if (!session?.token) {
-    throw new ApiError("Sign in first", 401);
+  const { url } = await request<{ url: string }>("/api/auth/google/start");
+  if (!url?.trim()) {
+    throw new ApiError("Could not start Google sign-in.", 500);
   }
-
-  const response = await fetch(`${getApiBaseUrl()}/api/auth/google/start`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${session.token}` },
-    redirect: "manual",
-  });
-
-  if (response.status === 401 || response.status === 403) {
-    throw new ApiError("Session expired — sign in again.", response.status);
-  }
-
-  const location = response.headers.get("Location");
-  if (response.status >= 300 && response.status < 400 && location) {
-    window.location.href = location;
-    return;
-  }
-
-  if (!response.ok) {
-    throw new ApiError("Could not start Google sign-in.", response.status);
-  }
+  window.location.href = url;
 }
 
 export async function getRestaurants(): Promise<Restaurant[]> {

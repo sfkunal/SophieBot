@@ -129,7 +129,7 @@ app.get("/api/auth/google/start", requireAuth, async (c) => {
   }
 
   const state = await createOAuthState(user.id, c.env.AUTH_SECRET);
-  return c.redirect(getOAuthUrl(c.env, state));
+  return c.json({ url: getOAuthUrl(c.env, state) });
 });
 
 app.get("/api/auth/google/callback", async (c) => {
