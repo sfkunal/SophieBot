@@ -7,6 +7,8 @@ import {
   getTelegramLinkCode,
   googleAuthUrl,
   setSession,
+  startTelegramVerify,
+  checkTelegramVerifyStatus,
   verifyPhone,
   type SetupUser,
 } from "./api";
@@ -29,10 +31,13 @@ const dashboardLink = document.getElementById("dashboard-link")!;
 const telegramLinkSection = document.getElementById("telegram-link")!;
 const telegramLinkBtn = document.getElementById("telegram-link-btn") as HTMLButtonElement;
 const telegramLinkResult = document.getElementById("telegram-link-result")!;
+const telegramVerifyBtn = document.getElementById("telegram-verify-btn") as HTMLButtonElement;
+const telegramVerifyResult = document.getElementById("telegram-verify-result")!;
 const stepDots = [...document.querySelectorAll<HTMLElement>(".step-dot")];
 
 let currentPhone = "";
 let currentStep: Step = 1;
+let telegramVerifyPoll: ReturnType<typeof setInterval> | null = null;
 
 initThemeToggle();
 const handledOAuthReturn = handleOAuthReturn();
@@ -45,6 +50,14 @@ document.getElementById("back-to-phone")!.addEventListener("click", () => {
   hideAlert();
 });
 telegramLinkBtn.addEventListener("click", onTelegramLinkClick);
+telegramVerifyBtn.addEventListener("click", onTelegramVerifyClick);
+
+function stopTelegramVerifyPoll(): void {
+  if (telegramVerifyPoll) {
+    clearInterval(telegramVerifyPoll);
+    telegramVerifyPoll = null;
+  }
+}
 
 function initThemeToggle(): void {
   const toggle = document.getElementById("theme-toggle");
@@ -126,6 +139,9 @@ function handleOAuthReturn(): boolean {
 
 function showStep(step: Step): void {
   currentStep = step;
+  if (step !== 2) {
+    stopTelegramVerifyPoll();
+  }
   stepPhone.classList.toggle("hidden", step !== 1);
   stepCode.classList.toggle("hidden", step !== 2);
   stepSetup.classList.toggle("hidden", step !== 3);
@@ -210,6 +226,69 @@ async function onCodeSubmit(event: SubmitEvent): Promise<void> {
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Confirm";
+  }
+}
+
+async function onTelegramVerifyClick(): Promise<void> {
+  if (!currentPhone) {
+    showAlert("Enter your phone number first.", "error");
+    showStep(1);
+    return;
+  }
+
+  hideAlert();
+  stopTelegramVerifyPoll();
+  telegramVerifyBtn.disabled = true;
+  telegramVerifyBtn.textContent = "Generating…";
+  telegramVerifyResult.classList.add("hidden");
+
+  try {
+    const result = await startTelegramVerify(currentPhone);
+    const botLine = result.bot_username
+      ? `<p>Open <strong>@${escapeHtml(result.bot_username)}</strong> in Telegram and send:</p>`
+      : `<p>Send this to the SophieBot Telegram bot:</p>`;
+
+    telegramVerifyResult.innerHTML = `
+      ${botLine}
+      <p class="telegram-code"><code>/verify ${escapeHtml(result.code)}</code></p>
+      <p class="card-subtitle">Only allowlisted numbers work. Waiting for you to send that in Telegram…</p>
+    `;
+    telegramVerifyResult.classList.remove("hidden");
+    showAlert("Send the /verify command in Telegram to finish setup.", "success");
+
+    telegramVerifyPoll = setInterval(() => {
+      void pollTelegramVerifyOnce();
+    }, 2000);
+    void pollTelegramVerifyOnce();
+  } catch (err) {
+    showAlert(
+      err instanceof ApiError ? err.message : "Could not start Telegram verify.",
+      "error",
+    );
+  } finally {
+    telegramVerifyBtn.disabled = false;
+    telegramVerifyBtn.textContent = "Verify with Telegram instead";
+  }
+}
+
+async function pollTelegramVerifyOnce(): Promise<void> {
+  if (!currentPhone) return;
+
+  try {
+    const status = await checkTelegramVerifyStatus(currentPhone);
+    if (!status.verified || !status.token) return;
+
+    stopTelegramVerifyPoll();
+    setSession({ token: status.token, phone: status.phone ?? currentPhone });
+    currentPhone = status.phone ?? currentPhone;
+    dashboardLink.classList.remove("hidden");
+    telegramLinkSection.classList.remove("hidden");
+    googleConnect.href = googleAuthUrl(currentPhone);
+    showAlert("Telegram verified! You're signed in.", "success");
+    showStep(3);
+    await refreshSetupStatus();
+  } catch {
+    // Keep polling until verified or user leaves the step.
   }
 }
 

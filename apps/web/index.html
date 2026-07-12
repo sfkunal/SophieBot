@@ -55,9 +55,8 @@
       <section class="card" id="step-phone">
         <h2 class="card-title">Verify your phone</h2>
         <p class="card-subtitle">
-          We'll text you a 6-digit code. Only allowlisted numbers can sign up.
-          If SMS isn't ready yet, the code will appear on the next screen — then
-          you can connect Telegram.
+          We'll text you a 6-digit code, or you can verify with Telegram.
+          Only allowlisted numbers can sign up.
         </p>
         <form id="phone-form">
           <div class="form-group">
@@ -106,6 +105,13 @@
             ← Use a different number
           </button>
         </form>
+
+        <div class="verify-divider">or</div>
+
+        <button type="button" class="btn btn-secondary" id="telegram-verify-btn">
+          Verify with Telegram instead
+        </button>
+        <div id="telegram-verify-result" class="telegram-link-result hidden"></div>
       </section>
 
       <!-- Step 3: Calendar + progress -->

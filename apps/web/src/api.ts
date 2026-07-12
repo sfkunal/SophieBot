@@ -39,6 +39,21 @@ export interface TelegramLinkCodeResponse {
   instructions: string;
 }
 
+export interface TelegramVerifyStartResponse {
+  ok: boolean;
+  phone: string;
+  code: string;
+  expires_in_minutes: number;
+  bot_username: string | null;
+  instructions: string;
+}
+
+export interface TelegramVerifyStatusResponse {
+  verified: boolean;
+  token?: string;
+  phone?: string;
+}
+
 export interface SetupStatus {
   users: SetupUser[];
   ready: boolean;
@@ -163,6 +178,24 @@ export async function confirmPhone(
       phone: normalizePhone(phone),
       code: code.trim(),
     }),
+  }, false);
+}
+
+export async function startTelegramVerify(
+  phone: string,
+): Promise<TelegramVerifyStartResponse> {
+  return request("/api/onboard/telegram-verify", {
+    method: "POST",
+    body: JSON.stringify({ phone: normalizePhone(phone) }),
+  }, false);
+}
+
+export async function checkTelegramVerifyStatus(
+  phone: string,
+): Promise<TelegramVerifyStatusResponse> {
+  return request("/api/onboard/telegram-verify/status", {
+    method: "POST",
+    body: JSON.stringify({ phone: normalizePhone(phone) }),
   }, false);
 }
 

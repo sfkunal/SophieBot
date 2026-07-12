@@ -25,6 +25,7 @@ import {
   listUsers,
   storeVerificationCode,
   storeTelegramLinkCode,
+  storeTelegramVerifyCode,
   updateGoogleRefreshToken,
   verifyCode,
 } from "./db/users.js";
@@ -228,6 +229,67 @@ app.post("/api/onboard/confirm", async (c) => {
 
   return c.json({
     ok: true,
+    token,
+    phone: user.phone_e164,
+    user: { id: user.id, phone: user.phone_e164 },
+  });
+});
+
+app.post("/api/onboard/telegram-verify", async (c) => {
+  if (!isTelegramConfigured(c.env)) {
+    return c.json({ error: "Telegram is not configured on this server" }, 503);
+  }
+
+  const parsed = phoneVerifyRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const phone = normalizePhone(parsed.data.phone);
+
+  if (!isPhoneInAllowlist(c.env, phone)) {
+    return c.json(
+      { error: "Phone not on allowlist — ask your partner to add it." },
+      403,
+    );
+  }
+
+  const code = await storeTelegramVerifyCode(c.env, phone);
+  const botUsername = await getTelegramBotUsername(c.env);
+
+  return c.json({
+    ok: true,
+    phone,
+    code,
+    expires_in_minutes: 15,
+    bot_username: botUsername,
+    instructions: botUsername
+      ? `Open @${botUsername} in Telegram and send: /verify ${code}`
+      : `Send this to the SophieBot Telegram bot: /verify ${code}`,
+  });
+});
+
+app.post("/api/onboard/telegram-verify/status", async (c) => {
+  const parsed = phoneVerifyRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const phone = normalizePhone(parsed.data.phone);
+  const user = await getUserByPhone(c.env.DB, phone);
+
+  if (!user?.telegram_chat_id || !isPhoneInAllowlist(c.env, phone)) {
+    return c.json({ verified: false });
+  }
+
+  const token = await createSessionToken(
+    user.id,
+    user.phone_e164,
+    c.env.AUTH_SECRET,
+  );
+
+  return c.json({
+    verified: true,
     token,
     phone: user.phone_e164,
     user: { id: user.id, phone: user.phone_e164 },

@@ -1,5 +1,6 @@
 import type { User } from "@brain/shared";
 import type { Env } from "../env.js";
+import { isPhoneInAllowlist } from "../auth/phones.js";
 import { newId, nowIso } from "../utils/id.js";
 
 export async function getUserByPhone(
@@ -187,4 +188,78 @@ export async function claimTelegramLinkCode(
     .run();
 
   return getUserById(env.DB, row.user_id);
+}
+
+export async function storeTelegramVerifyCode(
+  env: Env,
+  phone: string,
+  ttlMinutes = 15,
+): Promise<string> {
+  const code = generateTelegramLinkCode();
+  const expires = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+
+  await env.DB.prepare(
+    `INSERT INTO telegram_verify_codes (phone_e164, code, expires_at, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(phone_e164) DO UPDATE SET code = ?, expires_at = ?, created_at = ?`,
+  )
+    .bind(phone, code, expires, nowIso(), code, expires, nowIso())
+    .run();
+
+  return code;
+}
+
+export async function claimTelegramVerifyCode(
+  env: Env,
+  code: string,
+  chatId: string,
+  telegramUserId: string,
+): Promise<User | null> {
+  const normalized = code.trim().toUpperCase();
+  const row = await env.DB.prepare(
+    "SELECT phone_e164, expires_at FROM telegram_verify_codes WHERE code = ?",
+  )
+    .bind(normalized)
+    .first<{ phone_e164: string; expires_at: string }>();
+
+  if (!row || new Date(row.expires_at) < new Date()) {
+    return null;
+  }
+
+  if (!isPhoneInAllowlist(env, row.phone_e164)) {
+    return null;
+  }
+
+  let user = await getUserByPhone(env.DB, row.phone_e164);
+  if (!user) {
+    user = await createUser(env.DB, row.phone_e164);
+  }
+
+  const taken = await env.DB.prepare(
+    "SELECT id FROM users WHERE telegram_chat_id = ? AND id != ?",
+  )
+    .bind(chatId, user.id)
+    .first<{ id: string }>();
+
+  if (taken) return null;
+
+  await env.DB.prepare(
+    "UPDATE users SET telegram_chat_id = ?, telegram_user_id = ? WHERE id = ?",
+  )
+    .bind(chatId, telegramUserId, user.id)
+    .run();
+
+  user = (await getUserById(env.DB, user.id))!;
+
+  await env.DB.prepare("DELETE FROM telegram_verify_codes WHERE code = ?")
+    .bind(normalized)
+    .run();
+
+  await env.DB.prepare(
+    "DELETE FROM phone_verification_codes WHERE phone_e164 = ?",
+  )
+    .bind(row.phone_e164)
+    .run();
+
+  return user;
 }

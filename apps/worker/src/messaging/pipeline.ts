@@ -1,9 +1,10 @@
 import type { CalendarContext } from "@brain/shared";
 import type { Env } from "../env.js";
-import { isPhoneAuthorized } from "../auth/phones.js";
+import { isPhoneAuthorized, isPhoneInAllowlist } from "../auth/phones.js";
 import { isTelegramLinked } from "../auth/telegram.js";
 import {
   claimTelegramLinkCode,
+  claimTelegramVerifyCode,
   getUserByPhone,
   getUserByTelegramChatId,
 } from "../db/users.js";
@@ -58,6 +59,15 @@ const INTENT_FAILURE =
 const REPLY_FAILURE =
   "Done (probably). SophieBot's mouth is broken though — check the dashboard.";
 
+async function isTelegramAuthorized(
+  env: Env,
+  chatId: string,
+): Promise<boolean> {
+  const user = await getUserByTelegramChatId(env.DB, chatId);
+  if (!user) return false;
+  return isPhoneInAllowlist(env, user.phone_e164);
+}
+
 export async function processInboundMessage(
   env: Env,
   ctx: InboundMessageContext,
@@ -65,7 +75,7 @@ export async function processInboundMessage(
   const authorized =
     ctx.channel === "sms"
       ? await isPhoneAuthorized(env, ctx.senderId)
-      : await isTelegramLinked(env, ctx.senderId);
+      : await isTelegramAuthorized(env, ctx.senderId);
 
   if (!authorized) {
     const msg = ctx.channel === "sms" ? UNAUTHORIZED_SMS : UNAUTHORIZED_TELEGRAM;
@@ -242,9 +252,29 @@ async function handleTelegramCommand(
       "Welcome to SophieBot!",
       "",
       "1. Open the setup page in your browser",
-      "2. Tap \"Connect Telegram\" to get a link code",
-      "3. Send: /link YOUR_CODE",
+      "2. Enter your allowlisted phone number",
+      "3. Verify via SMS code or send /verify YOUR_CODE from the setup page",
     ].join("\n");
+  }
+
+  if (parsed.command === "verify") {
+    const code = (parsed.args || "").trim().toUpperCase();
+    if (!code) {
+      return "Send your verify code like this: /verify ABCD1234";
+    }
+
+    const user = await claimTelegramVerifyCode(
+      env,
+      code,
+      inbound.chatId,
+      inbound.userId,
+    );
+
+    if (!user) {
+      return "That verify code didn't work — grab a fresh one from the setup page (allowlisted numbers only, expires in 15 min).";
+    }
+
+    return `Verified! You're connected as •••${user.phone_e164.slice(-4)}. Head back to the browser — it should update automatically.`;
   }
 
   if (parsed.command === "link" || (!linked && isTelegramLinkCode(text))) {

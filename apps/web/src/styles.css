@@ -426,6 +426,15 @@ input:focus {
   color: var(--warning);
 }
 
+.verify-divider {
+  margin: 1.25rem 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .telegram-link-result {
   margin-top: 1rem;
   padding: 1rem;
