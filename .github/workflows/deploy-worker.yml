@@ -47,6 +47,17 @@ jobs:
             exit 1
           fi
 
+          token_len=${#CLOUDFLARE_API_TOKEN}
+          if [ "$token_len" -lt 40 ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN looks too short (${token_len} chars). It should be a Cloudflare API Token from dash.cloudflare.com/profile/api-tokens — not your account ID (${CLOUDFLARE_ACCOUNT_ID})."
+            exit 1
+          fi
+
+          if [ "${CLOUDFLARE_API_TOKEN}" = "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN matches CLOUDFLARE_ACCOUNT_ID. The token must be a separate API Token value from the Cloudflare dashboard."
+            exit 1
+          fi
+
           response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts")
