@@ -176,6 +176,7 @@ app.post("/api/onboard/verify", async (c) => {
   await storeVerificationCode(c.env, phone, code);
 
   const isLocalDev = c.env.APP_URL.includes("localhost");
+  let smsSent = true;
 
   try {
     await sendSms(
@@ -185,19 +186,19 @@ app.post("/api/onboard/verify", async (c) => {
     );
   } catch (err) {
     console.error("Verification SMS failed:", err);
-    if (!isLocalDev) {
-      return c.json({ error: "Failed to send SMS" }, 500);
-    }
+    smsSent = false;
   }
 
-  if (isLocalDev) {
-    console.log(`[dev] Verification code for ${phone}: ${code}`);
+  const showCodeInResponse = isLocalDev || !smsSent;
+  if (showCodeInResponse) {
+    console.log(`[verify] Verification code for ${phone}: ${code}`);
   }
 
   return c.json({
     ok: true,
     phone,
-    ...(isLocalDev ? { dev_code: code } : {}),
+    sms_sent: smsSent,
+    ...(showCodeInResponse ? { dev_code: code } : {}),
   });
 });
 

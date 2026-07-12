@@ -166,7 +166,9 @@ async function onPhoneSubmit(event: SubmitEvent): Promise<void> {
     showStep(2);
     if (result.dev_code) {
       showAlert(
-        `SMS may be blocked (A2P pending). Dev code: ${result.dev_code}`,
+        result.sms_sent === false
+          ? `SMS isn't available yet (Twilio pending). Your code: ${result.dev_code}`
+          : `SMS may be blocked (A2P pending). Dev code: ${result.dev_code}`,
         "success",
       );
       codeInput.value = result.dev_code;

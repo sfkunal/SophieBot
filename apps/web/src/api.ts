@@ -146,7 +146,7 @@ function normalizePhone(input: string): string {
 
 export async function verifyPhone(
   phone: string,
-): Promise<{ ok: boolean; dev_code?: string }> {
+): Promise<{ ok: boolean; dev_code?: string; sms_sent?: boolean }> {
   return request("/api/onboard/verify", {
     method: "POST",
     body: JSON.stringify({ phone: normalizePhone(phone) }),
