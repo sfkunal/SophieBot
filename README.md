@@ -1,7 +1,7 @@
 # Brain Agent
 
-[![Deploy Worker](https://github.com/YOUR_USERNAME/brain-agent/actions/workflows/deploy-worker.yml/badge.svg)](https://github.com/YOUR_USERNAME/brain-agent/actions/workflows/deploy-worker.yml)
-[![Deploy Web](https://github.com/YOUR_USERNAME/brain-agent/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/YOUR_USERNAME/brain-agent/actions/workflows/deploy-web.yml)
+[![Deploy Worker](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-worker.yml/badge.svg)](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-worker.yml)
+[![Deploy Web](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/sfkunal/SophieBot/actions/workflows/deploy-web.yml)
 
 **Brain** is a shared SMS assistant for a couple: save restaurants (with cuisine, location, and rationale), build a watchlist (genre and rationale), vote on what’s next, check Google Calendar for mutual free time, and get replies from a warm, funny personality — not a corporate bot.
 
@@ -88,8 +88,8 @@ brain-agent/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/brain-agent.git
-cd brain-agent
+git clone https://github.com/sfkunal/SophieBot.git
+cd SophieBot
 npm install
 cp .env.example .env
 ```
@@ -202,9 +202,8 @@ On push to `main`, `.github/workflows/deploy-web.yml` builds `@brain/web` and pu
 
 1. Repo → **Settings** → **Pages** → Source: **GitHub Actions**
 2. Repository secret `WORKER_API_URL` = `https://<your-worker>.workers.dev`
-3. Replace `YOUR_USERNAME` in README badge URLs with your GitHub username
 
-The site is served at `https://<username>.github.io/brain-agent/`.
+The site is served at `https://sfkunal.github.io/SophieBot/`.
 
 ### Manual deploy
 
