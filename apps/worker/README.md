@@ -1,13 +1,13 @@
 # @brain/worker
 
-Cloudflare Worker backend for Brain — SMS assistant for shared restaurant lists, watchlists, and calendar coordination.
+Cloudflare Worker backend for **SophieBot** — SMS and Telegram assistant for shared restaurant lists, watchlists, and calendar coordination.
 
 ## Prerequisites
 
 - Node.js 20+
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (`npm i -g wrangler` or use the local devDependency)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
 - Cloudflare account with Workers + D1 enabled
-- Twilio account with an SMS-capable phone number
+- Twilio account (optional if using Telegram only)
 - OpenAI API key
 - Google Cloud OAuth credentials (Calendar read-only scope)
 
@@ -58,12 +58,15 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put ALLOWED_PHONES
 npx wrangler secret put AUTH_SECRET
+# Optional:
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_BOT_USERNAME
 ```
 
 Update `[vars]` in `wrangler.toml`:
 
-- `APP_URL` — your worker URL (e.g. `https://brain-worker.your-subdomain.workers.dev`)
-- `WEB_URL` — dashboard URL for OAuth redirects
+- `APP_URL` — worker URL (e.g. `https://brain-worker.sophiebot.workers.dev`)
+- `WEB_URL` — dashboard URL (e.g. `https://sfkunal.github.io/SophieBot/`)
 - `GOOGLE_REDIRECT_URI` — `{APP_URL}/api/auth/google/callback`
 
 For local dev, create `.dev.vars` in `apps/worker/` (gitignored) with the same keys.
@@ -76,9 +79,13 @@ Point your Twilio number's **Messaging webhook** to:
 POST https://<your-worker>/webhooks/twilio
 ```
 
-Content-Type: `application/x-www-form-urlencoded`
+### 6. Telegram webhook
 
-### 6. Google OAuth
+```bash
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-worker>/webhooks/telegram"
+```
+
+### 7. Google OAuth
 
 In Google Cloud Console, add authorized redirect URI:
 
@@ -102,29 +109,35 @@ Health check: `GET http://localhost:8787/health`
 npm run deploy
 ```
 
+CI deploys via `.github/workflows/deploy-worker.yml` on push to `main`.
+
 ## API routes
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/webhooks/twilio` | Inbound SMS pipeline |
+| POST | `/webhooks/telegram` | Inbound Telegram pipeline |
 | GET | `/api/auth/google/start?phone=+1...` | Start Google OAuth |
 | GET | `/api/auth/google/callback` | OAuth callback |
 | POST | `/api/onboard/verify` | Send phone verification SMS |
-| POST | `/api/onboard/confirm` | Confirm code + register user |
+| POST | `/api/onboard/confirm` | Confirm SMS code + register user |
+| POST | `/api/onboard/telegram-verify` | Start Telegram phone verification |
+| POST | `/api/onboard/telegram-verify/status` | Poll Telegram verify completion |
+| POST | `/api/telegram/link-code` | Generate Telegram link code (auth required) |
 | GET | `/api/restaurants` | List restaurants (`?status=queued`) |
 | GET | `/api/watch` | List watch items |
 | GET | `/api/calendar/slots` | Mutual free slots this week |
 | GET | `/health` | Health check |
 
-## SMS pipeline
+## Message pipeline
 
-1. Verify Twilio signature
-2. Check phone allowlist (`ALLOWED_PHONES`) or registered user
-3. Load DB context (queue counts, recent items)
+1. Verify webhook signature (Twilio) or secret token (Telegram)
+2. Check allowlist — SMS: phone authorized; Telegram: linked + allowlisted
+3. Load DB context (queue counts, recent items, conversation history)
 4. OpenAI intent extraction (`gpt-4o-mini`)
 5. Deterministic handler by intent
 6. OpenAI reply composition (warm/funny personality)
-7. Send SMS + log to `inbound_messages`
+7. Send reply + log to `inbound_messages`
 
 ## Cron
 
@@ -134,9 +147,11 @@ Friday 6pm UTC (`0 18 * * 5`) — weekly digest nudging stale queued items (30+ 
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TWILIO_ACCOUNT_SID` | yes | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | yes | Twilio auth token (webhook signing + API) |
-| `TWILIO_PHONE_NUMBER` | yes | Outbound SMS from number (E.164) |
+| `TWILIO_ACCOUNT_SID` | if SMS | Twilio account SID |
+| `TWILIO_AUTH_TOKEN` | if SMS | Twilio auth token |
+| `TWILIO_PHONE_NUMBER` | if SMS | Outbound SMS from number (E.164) |
+| `TELEGRAM_BOT_TOKEN` | if Telegram | Telegram bot token |
+| `TELEGRAM_BOT_USERNAME` | if Telegram | Bot username (without @) |
 | `OPENAI_API_KEY` | yes | OpenAI API key |
 | `GOOGLE_CLIENT_ID` | yes | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | yes | Google OAuth client secret |
