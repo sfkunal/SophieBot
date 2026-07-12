@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/brain-agent/",
+  base: "/SophieBot/",
   publicDir: "public",
   resolve: {
     alias: {

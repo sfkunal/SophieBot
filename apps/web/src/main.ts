@@ -92,11 +92,11 @@ function checkExistingSession(skipInitialRefresh = false): void {
 }
 
 function handleOAuthReturn(): boolean {
-  // Recover from OAuth redirect missing trailing slash (/brain-agent? → /brain-agent/brain-agent)
-  if (window.location.pathname.includes("/brain-agent/brain-agent")) {
+  // Recover from OAuth redirect missing trailing slash (/SophieBot? → /SophieBot/SophieBot)
+  if (window.location.pathname.includes("/SophieBot/SophieBot")) {
     const fixed = window.location.pathname.replace(
-      /\/brain-agent\/brain-agent\/?/,
-      "/brain-agent/",
+      /\/SophieBot\/SophieBot\/?/,
+      "/SophieBot/",
     );
     window.history.replaceState({}, "", fixed + window.location.search);
   }

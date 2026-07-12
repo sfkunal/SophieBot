@@ -82,7 +82,7 @@ app.get("/", (c) =>
     service: "brain-worker",
     status: "ok",
     message:
-      "This is the Brain API backend — not the web UI. Open the dashboard at WEB_URL (local dev: http://localhost:5173/brain-agent/).",
+      "This is the Brain API backend — not the web UI. Open the dashboard at WEB_URL (local dev: http://localhost:5173/SophieBot/).",
     endpoints: {
       health: "/health",
       twilio_webhook: "POST /webhooks/twilio",
