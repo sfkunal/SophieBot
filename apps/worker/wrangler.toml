@@ -9,9 +9,9 @@ database_id = "5797ba58-7062-4abd-ac99-6c14f85fccbd"
 migrations_dir = "migrations"
 
 [vars]
-APP_URL = "http://localhost:8787"
-WEB_URL = "http://localhost:5173/brain-agent/"
-GOOGLE_REDIRECT_URI = "http://localhost:8787/api/auth/google/callback"
+APP_URL = "https://brain-worker.sophiebot.workers.dev"
+WEB_URL = "https://sfkunal.github.io/SophieBot/"
+GOOGLE_REDIRECT_URI = "https://brain-worker.sophiebot.workers.dev/api/auth/google/callback"
 
 # Secrets (set via `wrangler secret put`):
 # TWILIO_ACCOUNT_SID
